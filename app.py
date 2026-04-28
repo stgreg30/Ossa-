@@ -2,32 +2,32 @@ import os
 import telebot
 from flask import Flask
 import threading
-from google import genai
+import google.generativeai as genai
 
+# 1. Setup Flask (for Render health checks)
 app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "Ossa is Online", 200
 
-# Setup Gemini using the new SDK
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+# 2. Setup Gemini
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
+# Since Render has the newest library, we can use the better model!
+model = genai.GenerativeModel('gemini-1.5-flash')
 
+# 3. Setup Telegram
 bot = telebot.TeleBot(os.environ.get("TELEGRAM_BOT_TOKEN"))
 
 @bot.message_handler(func=lambda message: True)
 def chat(message):
     try:
-        # The updated way to generate content
-        response = client.models.generate_content(
-            model='gemini-2.0-flash', 
-            contents=message.text
-        )
+        # Send user message to Gemini
+        response = model.generate_content(message.text)
         bot.reply_to(message, response.text)
     except Exception as e:
-        # This line will show the real error in your Render Logs tab
-        print(f"GEMINI ERROR: {e}") 
-        bot.reply_to(message, "Ossa is having trouble thinking... check logs.")
+        # THIS is the magic line. It will send the exact error code directly to Telegram!
+        bot.reply_to(message, f"BRAIN ERROR: {str(e)}")
 
 def run_bot():
     bot.infinity_polling()
