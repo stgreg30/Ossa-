@@ -1,46 +1,56 @@
-import os
-import google.generativeai as genai
-from typing import Optional
+import requests
+import json
+
+API_KEY = "AIzaSyAKPYP_1ieajPmkMQxJkZVeKAqc0uolcUA"
 
 class GeminiAccelerator:
     """
-    Ossa's High-Level Processing Unit.
-    Used for tasks requiring heavy computational reasoning.
+    Ossa's High-Level Processing Unit
+    using direct Gemini API requests
     """
+
     def __init__(self):
-        # It's best practice to set your API key as an environment variable
-        # OS Command: export GEMINI_API_KEY='your-key-here'
-        self.api_key = os.getenv("GEMINI_API_KEY")
-        
-        if not self.api_key:
-            print("[WARNING] Gemini API Key not found. Ossa will run in Low-Power mode (Local Heuristics only).")
+        if API_KEY == "YOUR_GEMINI_API_KEY":
+            print("[WARNING] Gemini API Key missing.")
             self.active = False
         else:
-            genai.configure(api_key=self.api_key)
-            # Using 1.5 Flash for speed, or 1.5 Pro for 'Deep Reasoning'
-            self.model = genai.GenerativeModel('gemini-1.5-flash')
             self.active = True
 
-    def spark(self, prompt: str, system_instruction: Optional[str] = None) -> str:
-        """
-        Sends a 'Neural Spark' to the API. 
-        Returns the raw processing result.
-        """
+    def spark(self, prompt, system_instruction=None):
         if not self.active:
             return "Error: External Accelerator Offline."
 
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key={API_KEY}"
+
+        headers = {
+            "Content-Type": "application/json"
+        }
+
+        if system_instruction:
+            final_prompt = f"INSTRUCTION: {system_instruction}\n\nINPUT: {prompt}"
+        else:
+            final_prompt = prompt
+
+        data = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": final_prompt}
+                    ]
+                }
+            ]
+        }
+
+        response = requests.post(
+            url,
+            headers=headers,
+            data=json.dumps(data)
+        )
+
         try:
-            # We can pass Ossa's current identity as the 'System Instruction'
-            if system_instruction:
-                response = self.model.generate_content(
-                    f"INSTRUCTION: {system_instruction}\n\nINPUT: {prompt}"
-                )
-            else:
-                response = self.model.generate_content(prompt)
-                
-            return response.text
-        except Exception as e:
-            return f"Neural Spark Failure: {str(e)}"
+            return response.json()["candidates"][0]["content"]["parts"][0]["text"]
+        except:
+            return f"API Error: {response.text}"
 
 # Global instance
 accelerator = GeminiAccelerator()
