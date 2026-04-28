@@ -1,12 +1,12 @@
 import os
 import telebot
 from flask import Flask, request
-[span_3](start_span)from core.brain_controller import executive_function #[span_3](end_span)
+from core.brain_controller import executive_function 
 
-# 1. Setup Flask
+# 1. Setup Flask for Render health checks
 app = Flask(__name__)
 
-# 2. Setup Telegram
+# 2. Setup Telegram Bot
 TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 bot = telebot.TeleBot(TOKEN)
 
@@ -14,19 +14,18 @@ bot = telebot.TeleBot(TOKEN)
 def home():
     return "Ossa is Online", 200
 
-# 3. Wire the Brain to Telegram
+# 3. Connect the Telegram messages to Ossa's Brain
 @bot.message_handler(func=lambda message: True)
 def chat(message):
     try:
-        # Instead of calling Gemini directly, we use Ossa's full cognitive cycle
-        # This triggers: Perception -> Emotion -> Simulation -> Decision -> Action
-        [span_4](start_span)ossa_response = executive_function.pulse(message.text) #[span_4](end_span)
+        # This sends the message into the full Ossa cognitive cycle
+        ossa_response = executive_function.pulse(message.text) 
         bot.reply_to(message, ossa_response)
     except Exception as e:
-        # Sends the specific error to Telegram for debugging
-        [span_5](start_span)bot.reply_to(message, f"BRAIN ERROR: {str(e)}") #[span_5](end_span)
+        # This sends the error directly to you on Telegram if something breaks
+        bot.reply_to(message, f"BRAIN ERROR: {str(e)}") 
 
-# 4. Webhook logic (Best for Render)
+# 4. Webhook logic for Render deployment
 @app.route('/' + TOKEN, methods=['POST'])
 def getMessage():
     json_string = request.get_data().decode('utf-8')
@@ -37,7 +36,7 @@ def getMessage():
 @app.route("/set_webhook")
 def webhook():
     bot.remove_webhook()
-    # Replace with your actual Render URL
+    # Ensure this matches your Render service URL
     bot.set_webhook(url='https://ossa-arjt.onrender.com/' + TOKEN)
     return "Webhook Set!", 200
 
