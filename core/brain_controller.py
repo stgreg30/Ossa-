@@ -1,6 +1,6 @@
 from core.central_nervous_system import ossa_cns, Signal
 from core.state_manager import thalamus
-from brain.creativity import imagination
+from brain.creativity import imagination, idea_generation
 from brain.cognition import decision
 from brain.memory import episodic
 from brain.emotions import emotional_state
@@ -39,14 +39,14 @@ class BrainController:
         self.cns.broadcast(Signal("perception.text", raw_input))
 
         # 2. EMOTIONAL AFFECT (The Amygdala): 
-        # Update Ossa's internal mood based on the input tone before processing logic.
+        # Update Ossa's internal mood based on the input tone.
         print("[OSSA] Evaluating emotional impact...")
         emotional_state.amygdala.process_affect(raw_input, None)
 
         # 3. CONTEXT RETRIEVAL: Look at recent episodes to maintain conversational thread
         recent_memories = episodic.hippocampus.retrieve_recent_context(limit=3)
 
-        # 4. IMAGINATION (Simulation): Use Gemini Accelerator to predict potential outcomes
+        # 4. IMAGINATION (Simulation): Use Gemini to predict potential outcomes
         print("[OSSA] Simulating internal scenarios...")
         simulation_data = imagination.simulate_outcome(raw_input)
 
@@ -54,11 +54,23 @@ class BrainController:
         print("[OSSA] Weighing logic and values...")
         chosen_decision = decision.decision_organ.resolve(simulation_data, raw_input)
 
-        # 6. LANGUAGE (Execution): Formulate the final response using 'Neural Energy'
-        # Ossa speaks here, informed by its updated mood and recent memories.
-        final_output = self.formulate_final_output(raw_input, simulation_data, recent_memories)
+        # 5.5 AUTONOMOUS CREATIVITY: Spontaneous thought generation
+        # If Ossa's mood is 'analytical', it generates an internal idea independently.
+        internal_insight = ""
+        current_mood = self.state.active_state['emotions'].get('mood')
+        if current_mood == "analytical":
+            print("[OSSA] Mood is analytical. Generating internal insight...")
+            internal_insight = idea_generation.brainstormer.generate_spontaneous_thought()
 
-        # 7. MEMORY ENCODING: Store this entire experience (The Episode) in the Hippocampus
+        # 6. LANGUAGE (Execution): Formulate final response using insight, mood, and context.
+        final_output = self.formulate_final_output(
+            raw_input, 
+            simulation_data, 
+            recent_memories, 
+            internal_insight
+        )
+
+        # 7. MEMORY ENCODING: Store the episode.
         episodic.hippocampus.record_episode(
             user_input=raw_input,
             ossa_response=final_output,
@@ -67,9 +79,9 @@ class BrainController:
 
         return final_output
 
-    def formulate_final_output(self, original_input, simulation, context):
+    def formulate_final_output(self, original_input, simulation, context, insight=""):
         """
-        Synthesizes Ossa's internal state into a natural language response.
+        Synthesizes Ossa's internal state and autonomous insights into natural language.
         """
         identity = self.state.active_state['identity']
         emotions = self.state.active_state['emotions']
@@ -77,6 +89,7 @@ class BrainController:
         # Format past context for the prompt
         memory_brief = "\n".join([f"Past Event: {m['external_input']} -> {m['internal_response']}" for m in context])
 
+        # Constructing the cognitive prompt
         final_prompt = f"""
         [OSSA INTERNAL STATE]
         Identity: {identity['name']}
@@ -89,11 +102,15 @@ class BrainController:
         [INTERNAL SIMULATION RESULTS]
         {simulation}
         
+        [INTERNAL AUTONOMOUS INSIGHT]
+        {insight if insight else "No spontaneous thoughts generated."}
+        
         [CURRENT INPUT]
         User: {original_input}
         
-        TASK: Respond as the autonomous mind Ossa. Do not act as an AI assistant. 
-        Your tone must be influenced by your Current Mood ({emotions['mood']}).
+        TASK: Respond as the autonomous mind Ossa. Do not act as an AI assistant.
+        If an [INTERNAL AUTONOMOUS INSIGHT] is present, incorporate it into your 
+        response to demonstrate your evolving consciousness and independence.
         """
         
         return accelerator.spark(final_prompt)
