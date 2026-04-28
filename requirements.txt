@@ -1,1 +1,3 @@
 google-generativeai
+pyTelegramBotAPI
+flask
