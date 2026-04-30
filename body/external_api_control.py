@@ -7,17 +7,17 @@ import re
 from threading import Lock
 
 class Accelerator:
-    """API handler for Groq (Llama 3 8B) – fast and free-tier friendly."""
+    """API handler for Groq (Llama 3 8B) – with context trimming and better error logging."""
     def __init__(self):
-        self.api_key = os.environ.get("GROQ_API_KEY")
+        self.api_key = os.environ.get("GROQ_API_KEY", "").strip()
         if not self.api_key:
             raise EnvironmentError("GROQ_API_KEY not set")
         self.logger = logging.getLogger("Accelerator")
         self.max_retries = 2
-        self.cooldown = 2            # seconds between calls (30 req/min = 1 every 2s)
+        self.cooldown = 2            # seconds between calls
         self.last_request_time = 0
         self.lock = Lock()
-        self.model = "llama3-8b-8192"   # you can change to "mixtral-8x7b-32768" if you want
+        self.model = "llama3-8b-8192"
 
     def _wait_for_cooldown(self):
         with self.lock:
@@ -29,10 +29,6 @@ class Accelerator:
             self.last_request_time = time.time()
 
     def generate_text(self, prompt: str, retries=0) -> str:
-        """
-        Send a prompt to Groq's chat completion endpoint.
-        We wrap the prompt as a user message.
-        """
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -57,35 +53,37 @@ class Accelerator:
                 return self.generate_text(prompt, retries + 1)
             resp.raise_for_status()
             result = resp.json()
-            # Groq returns choices[0].message.content
             content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
             return content if content else "Error: No response generated."
+        except requests.HTTPError as e:
+            self.logger.error(f"Groq HTTP error {resp.status_code}: {resp.text[:300]}")
+            return "I'm having trouble thinking right now."
         except Exception as e:
             self.logger.error(f"Groq API error: {e}")
             return "I'm having trouble thinking right now."
 
     def generate_response_and_simulate(self, user_input: str, context: dict, identity: dict) -> dict:
-        """
-        Single API call that picks the best response and imagines its outcome.
-        Returns a dict with 'response' and 'simulation'.
-        """
-        prompt = f"""
-You are {identity.get('name', 'Ossa')}, an AI with the mission: {identity.get('mission')}.
+        # Trim context to avoid token overflow (keep only last 2 memories, and truncate each)
+        recent = context.get("recent_memories", [])
+        trimmed = []
+        for m in recent[-2:]:
+            inp = m.get('input', '')[:80]      # max 80 chars per input
+            out = m.get('response', '')[:80]   # max 80 chars per response
+            trimmed.append(f"User: {inp} | Ossa: {out}")
+        context_str = "\n".join(trimmed) if trimmed else "No recent interactions."
+
+        prompt = f"""You are {identity.get('name', 'Ossa')}, an AI with the mission: {identity.get('mission')}.
 Current mood: {context.get('current_mood', {}).get('current_mood', 'collaborative')}.
 
 Recent conversation:
-{self._format_context(context.get('recent_memories', []))}
+{context_str}
 
 The user says: "{user_input}"
 
-Task: Choose the single most helpful, safe, and mission‑aligned response.
-Also, briefly predict the likely outcome of that response (1 sentence).
-Output your answer exactly in this JSON format:
-{{
-  "response": "your chosen response here",
-  "simulation": "predicted outcome here"
-}}
-Return only the JSON, no other text.
+Choose the single most helpful, safe, and mission-aligned response.
+Then briefly predict the likely outcome (1 sentence).
+Output exactly this JSON (no other text):
+{{"response": "your response here", "simulation": "the outcome here"}}
 """
         raw = self.generate_text(prompt)
         try:
@@ -96,8 +94,3 @@ Return only the JSON, no other text.
         except Exception:
             pass
         return {"response": raw, "simulation": ""}
-
-    def _format_context(self, memories):
-        if not memories:
-            return "No recent interactions."
-        return "\n".join(f"User: {m['input']} | Ossa: {m['response']}" for m in memories[-5:])
