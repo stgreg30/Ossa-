@@ -4,7 +4,7 @@ import logging
 
 class Heartbeat:
     """Background loop that maintains homeostasis and triggers metacognition."""
-    def __init__(self, cns, brain_controller, interval=30):
+    def __init__(self, cns, brain_controller, interval=10):   # interval is passed as 10 from brain_controller
         self.cns = cns
         self.brain_controller = brain_controller
         self.interval = interval
@@ -40,10 +40,10 @@ class Heartbeat:
             else:
                 self._counter += 1
 
-            # Trigger metacognitive reflection only once every 30 minutes
-            # With interval=10s, 30 * 60 / 10 = 180 loops
-            if self._counter % 180 == 0:
-                self.logger.info("Triggering metacognitive reflection (every 30 min)")
+            # Trigger metacognitive reflection only once per HOUR
+            # With interval=10s, 60 * 60 / 10 = 360 loops
+            if self._counter % 360 == 0:
+                self.logger.info("Triggering metacognitive reflection (every hour)")
                 try:
                     self.brain_controller.metacognition.reflect()
                 except Exception as e:
