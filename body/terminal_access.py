@@ -1,36 +1,29 @@
 import subprocess
-from core.central_nervous_system import Signal, ossa_cns
+import logging
 
-class TerminalAccess:
-    """
-    Ossa's Motor Cortex. 
-    Allows Ossa to interact with the operating system.
-    """
-    def execute(self, command: str):
-        """Executes a shell command and returns the result."""
-        print(f"[MOTOR] Executing: {command}")
+class MotorCortex:
+    """Executes shell commands (use with caution)."""
+    def __init__(self, allowed_commands=None):
+        # Optionally restrict commands
+        self.allowed = allowed_commands
+        self.logger = logging.getLogger("MotorCortex")
+
+    def execute(self, command: str, timeout=10) -> str:
+        """Run a shell command and return stdout/stderr."""
+        if self.allowed and command.split()[0] not in self.allowed:
+            return f"Command '{command.split()[0]}' not allowed."
         try:
-            # We use a timeout to prevent Ossa from getting stuck in a loop
             result = subprocess.run(
-                command, 
-                shell=True, 
-                capture_output=True, 
-                text=True, 
-                timeout=15
+                command,
+                shell=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout
             )
-            
-            output = result.stdout if result.returncode == 0 else result.stderr
-            
-            # Broadcast the 'Tactile Feedback'
-            ossa_cns.broadcast(Signal(
-                origin="body.terminal",
-                content={"command": command, "output": output},
-                intensity=0.8
-            ))
-            
-            return output
+            output = result.stdout + result.stderr
+            self.logger.info(f"Executed: {command} -> {output[:100]}")
+            return output or "Command executed with no output."
+        except subprocess.TimeoutExpired:
+            return "Command timed out."
         except Exception as e:
-            return f"Motor Failure: {str(e)}"
-
-# Global instance
-motor_cortex = TerminalAccess()
+            return f"Execution error: {str(e)}"
