@@ -7,19 +7,19 @@ import re
 from threading import Lock
 
 class Accelerator:
-    """API handler for Google Gemini 2.0 Flash with aggressive backoff & cooldown."""
+    """API handler for Groq (Llama 3 8B) – fast and free-tier friendly."""
     def __init__(self):
-        self.api_key = os.environ.get("GEMINI_API_KEY")
+        self.api_key = os.environ.get("GROQ_API_KEY")
         if not self.api_key:
-            raise EnvironmentError("GEMINI_API_KEY not set")
+            raise EnvironmentError("GROQ_API_KEY not set")
         self.logger = logging.getLogger("Accelerator")
-        self.max_retries = 3
+        self.max_retries = 2
+        self.cooldown = 2            # seconds between calls (30 req/min = 1 every 2s)
         self.last_request_time = 0
-        self.cooldown = 5          # seconds between API calls
         self.lock = Lock()
+        self.model = "llama3-8b-8192"   # you can change to "mixtral-8x7b-32768" if you want
 
     def _wait_for_cooldown(self):
-        """Ensure at least `cooldown` seconds since last request."""
         with self.lock:
             now = time.time()
             wait = self.last_request_time + self.cooldown - now
@@ -29,44 +29,46 @@ class Accelerator:
             self.last_request_time = time.time()
 
     def generate_text(self, prompt: str, retries=0) -> str:
-        """Send a prompt to Gemini, with aggressive backoff + cooldown."""
-        model_name = "gemini-2.0-flash"
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
-        headers = {"Content-Type": "application/json"}
+        """
+        Send a prompt to Groq's chat completion endpoint.
+        We wrap the prompt as a user message.
+        """
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
         data = {
-            "contents": [{"parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "temperature": 0.7,
-                "maxOutputTokens": 200,
-            }
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": "You are a helpful, safe, and concise AI assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.7,
+            "max_tokens": 200
         }
         try:
             self._wait_for_cooldown()
-            resp = requests.post(
-                url,
-                headers=headers,
-                params={"key": self.api_key},
-                json=data,
-                timeout=30
-            )
+            resp = requests.post(url, headers=headers, json=data, timeout=30)
             if resp.status_code == 429 and retries < self.max_retries:
-                wait = (2 ** retries) * 5   # 5, 10, 20 seconds
+                wait = (2 ** retries) * 5
                 self.logger.warning(f"Rate limited, retrying in {wait}s")
                 time.sleep(wait)
                 return self.generate_text(prompt, retries + 1)
             resp.raise_for_status()
             result = resp.json()
-            candidates = result.get("candidates", [])
-            if candidates and "content" in candidates[0]:
-                parts = candidates[0]["content"]["parts"]
-                return "".join(part.get("text", "") for part in parts)
-            return "Error: No response generated."
+            # Groq returns choices[0].message.content
+            content = result.get("choices", [{}])[0].get("message", {}).get("content", "")
+            return content if content else "Error: No response generated."
         except Exception as e:
-            self.logger.error(f"Gemini API error: {e}")
+            self.logger.error(f"Groq API error: {e}")
             return "I'm having trouble thinking right now."
 
     def generate_response_and_simulate(self, user_input: str, context: dict, identity: dict) -> dict:
-        """Single API call that picks the best response and imagines its outcome."""
+        """
+        Single API call that picks the best response and imagines its outcome.
+        Returns a dict with 'response' and 'simulation'.
+        """
         prompt = f"""
 You are {identity.get('name', 'Ossa')}, an AI with the mission: {identity.get('mission')}.
 Current mood: {context.get('current_mood', {}).get('current_mood', 'collaborative')}.
