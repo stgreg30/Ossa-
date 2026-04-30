@@ -1,25 +1,27 @@
 import os
+import time
 import requests
 import logging
 
 class Accelerator:
-    """API handler for Google Gemini 1.5 Flash."""
+    """API handler for Google Gemini 2.0 Flash with rate‑limit handling."""
     def __init__(self):
         self.api_key = os.environ.get("GEMINI_API_KEY")
         if not self.api_key:
             raise EnvironmentError("GEMINI_API_KEY not set")
         self.logger = logging.getLogger("Accelerator")
+        self.max_retries = 3
 
-    def generate_text(self, prompt: str) -> str:
-        """Raw text generation from Gemini using the latest stable model."""
-        model_name = "gemini-2.0-flash"  # guaranteed to exist
+    def generate_text(self, prompt: str, retries=0) -> str:
+        """Send a prompt to Gemini, with exponential backoff on 429."""
+        model_name = "gemini-2.0-flash"
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent"
         headers = {"Content-Type": "application/json"}
         data = {
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": 0.7,
-                "maxOutputTokens": 256,
+                "maxOutputTokens": 200,   # keep responses short
             }
         }
         try:
@@ -30,6 +32,11 @@ class Accelerator:
                 json=data,
                 timeout=30
             )
+            if resp.status_code == 429 and retries < self.max_retries:
+                wait = (2 ** retries) * 2   # 2, 4, 8 seconds
+                self.logger.warning(f"Rate limited, retrying in {wait}s")
+                time.sleep(wait)
+                return self.generate_text(prompt, retries + 1)
             resp.raise_for_status()
             result = resp.json()
             candidates = result.get("candidates", [])
@@ -41,8 +48,11 @@ class Accelerator:
             self.logger.error(f"Gemini API error: {e}")
             return "I'm having trouble thinking right now."
 
-    def generate_candidates(self, user_input: str, context: dict, identity: dict) -> list:
-        """Generate a few response candidates using the LLM."""
+    def generate_response_and_simulate(self, user_input: str, context: dict, identity: dict) -> str:
+        """
+        Single API call that picks the best response and imagines its outcome,
+        to avoid multiple calls and rate limits.
+        """
         prompt = f"""
 You are {identity.get('name', 'Ossa')}, an AI with the mission: {identity.get('mission')}.
 Current mood: {context.get('current_mood', {}).get('current_mood', 'collaborative')}.
@@ -52,23 +62,26 @@ Recent conversation:
 
 The user says: "{user_input}"
 
-Generate 3 different, concise response options that would be helpful, safe, and aligned with your mission.
-Return each response on a new line, numbered like:
-1. response one
-2. response two
-3. response three
+Task: Choose the single most helpful, safe, and mission‑aligned response.
+Also, briefly predict the likely outcome of that response (1 sentence).
+Output your answer exactly in this JSON format:
+{{
+  "response": "your chosen response here",
+  "simulation": "predicted outcome here"
+}}
+Return only the JSON, no other text.
 """
         raw = self.generate_text(prompt)
-        candidates = []
-        for line in raw.splitlines():
-            stripped = line.strip()
-            if stripped and (stripped[0].isdigit() and '.' in stripped[:3]):
-                candidate = stripped.split('.', 1)[-1].strip()
-                if candidate:
-                    candidates.append(candidate)
-        if not candidates:
-            candidates = [raw] if raw else ["I'm not sure what to say."]
-        return candidates[:3]
+        # Attempt to parse JSON
+        import json, re
+        try:
+            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+            if json_match:
+                data = json.loads(json_match.group())
+                return data.get("response", raw)
+        except Exception:
+            pass
+        return raw   # fallback
 
     def _format_context(self, memories):
         if not memories:
