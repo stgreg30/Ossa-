@@ -7,17 +7,17 @@ import re
 from threading import Lock
 
 class Accelerator:
-    """API handler for Groq (Llama 3.1 8B Instant) – context‑trimmed, rate‑limit safe."""
+    """API handler for Groq (Llama 3.1 8B Instant) – with extended context support."""
     def __init__(self):
         self.api_key = os.environ.get("GROQ_API_KEY", "").strip()
         if not self.api_key:
             raise EnvironmentError("GROQ_API_KEY not set")
         self.logger = logging.getLogger("Accelerator")
         self.max_retries = 2
-        self.cooldown = 2            # seconds between calls (free tier: 30 req/min)
+        self.cooldown = 2
         self.last_request_time = 0
         self.lock = Lock()
-        self.model = "llama-3.1-8b-instant"   # current Groq free‑tier model
+        self.model = "llama-3.1-8b-instant"
 
     def _wait_for_cooldown(self):
         with self.lock:
@@ -63,20 +63,31 @@ class Accelerator:
             return "I'm having trouble thinking right now."
 
     def generate_response_and_simulate(self, user_input: str, context: dict, identity: dict) -> dict:
-        # Trim context to avoid token overflow (keep only last 2 memories, and truncate each)
-        recent = context.get("recent_memories", [])
-        trimmed = []
-        for m in recent[-2:]:
-            inp = m.get('input', '')[:80]      # max 80 chars per input
-            out = m.get('response', '')[:80]   # max 80 chars per response
-            trimmed.append(f"User: {inp} | Ossa: {out}")
-        context_str = "\n".join(trimmed) if trimmed else "No recent interactions."
+        # Extract augmented context
+        recent_memories = context.get("recent_memories", [])
+        relevant_facts = context.get("relevant_facts", [])
+
+        # Format recent conversation (full text, no arbitrary truncation)
+        if recent_memories:
+            recent_str = "\n".join(
+                f"User: {m.get('input', '')}\nOssa: {m.get('response', '')}"
+                for m in recent_memories
+            )
+        else:
+            recent_str = "No recent interactions."
+
+        # Older related memories, if any
+        facts_str = ""
+        if relevant_facts:
+            facts_str = "Earlier related memories:\n" + "\n".join(relevant_facts)
 
         prompt = f"""You are {identity.get('name', 'Ossa')}, an AI with the mission: {identity.get('mission')}.
 Current mood: {context.get('current_mood', {}).get('current_mood', 'collaborative')}.
 
 Recent conversation:
-{context_str}
+{recent_str}
+
+{facts_str}
 
 The user says: "{user_input}"
 

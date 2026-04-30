@@ -4,14 +4,13 @@ Hippocampus – Episodic Memory Module
 Stores timestamped interaction events and provides methods
 to retrieve recent context for the cognitive cycle.
 
-Memory is persisted via the Thalamus state manager.
-Old episodes are automatically trimmed to prevent unbounded growth.
+Now includes get_augmented_context() that surfaces related
+older memories alongside recent episodes for better recall.
 """
 
 import logging
 from typing import Any, Dict, List, Optional
 
-# If we need type hints for Thalamus (avoids circular imports)
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from core.state_manager import Thalamus
@@ -32,11 +31,6 @@ class Hippocampus:
     DEFAULT_MAX_EPISODES = 1000
 
     def __init__(self, thalamus: "Thalamus", max_episodes: int = DEFAULT_MAX_EPISODES) -> None:
-        """
-        Args:
-            thalamus: State manager for storing memories.
-            max_episodes: Maximum number of episodes to retain.
-        """
         self.thalamus = thalamus
         self.max_episodes = max_episodes
         logger.info(f"Hippocampus initialized (max_episodes={max_episodes})")
@@ -46,26 +40,15 @@ class Hippocampus:
     # ------------------------------------------------------------------
 
     def add_episode(self, episode: Dict[str, Any]) -> None:
-        """
-        Append a new episode to memory.
-
-        Automatically trims the memory list if it exceeds max_episodes.
-
-        Args:
-            episode: A dictionary with at least 'input' and 'response'.
-        """
         if not isinstance(episode, dict):
             logger.warning("Attempted to add non-dict episode, skipping.")
             return
-
-        # Ensure timestamp exists
         if "timestamp" not in episode:
             episode["timestamp"] = __import__("datetime").datetime.now().isoformat()
 
         memories = self.thalamus.get_memories()
         memories.append(episode)
 
-        # Enforce size limit
         if len(memories) > self.max_episodes:
             trimmed = memories[-self.max_episodes:]
             logger.debug(f"Memory trimmed from {len(memories)} to {len(trimmed)} episodes")
@@ -75,39 +58,19 @@ class Hippocampus:
         logger.debug(f"Episode added. Total episodes: {len(memories)}")
 
     # ------------------------------------------------------------------
-    # Retrieval
+    # Retrieval (legacy + new augmented)
     # ------------------------------------------------------------------
 
     def get_recent_context(self, n: int = 5) -> List[Dict[str, Any]]:
-        """
-        Retrieve the most recent n episodes.
-
-        Args:
-            n: Number of recent episodes to return (default 5).
-
-        Returns:
-            A list of episode dicts (newest last), or empty list if no memories.
-        """
         memories = self.thalamus.get_memories()
         if not memories:
             return []
         return memories[-n:]
 
     def get_all_memories(self) -> List[Dict[str, Any]]:
-        """Return a copy of all stored episodes."""
         return list(self.thalamus.get_memories())
 
     def search_memories(self, keyword: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """
-        Search episodes whose input or response contains the keyword (case-insensitive).
-
-        Args:
-            keyword: The search term.
-            limit: Maximum results to return.
-
-        Returns:
-            List of matching episodes (newest first).
-        """
         memories = self.thalamus.get_memories()
         results = []
         keyword_lower = keyword.lower()
@@ -120,15 +83,49 @@ class Hippocampus:
                     break
         return results
 
+    def get_augmented_context(self, current_input: str) -> Dict[str, Any]:
+        """
+        Build an enriched context dictionary for the cognitive cycle.
+        Returns:
+            dict with keys:
+                'recent'            – last 5 episodes (full text)
+                'relevant_facts'    – up to 3 older episodes related to the input
+        """
+        memories = self.thalamus.get_memories()
+        if not memories:
+            return {"recent": [], "relevant_facts": []}
+
+        # 1. Recent: last 5 episodes (full content, no truncation here)
+        recent = memories[-5:]
+
+        # 2. Search older memories for facts related to current input
+        relevant_facts = []
+        if len(memories) > 5:
+            older = memories[:-5]
+            input_words = set(current_input.lower().split())
+            for ep in reversed(older):
+                ep_text = (ep.get("input", "") + " " + ep.get("response", "")).lower()
+                if any(word in ep_text for word in input_words):
+                    fact = (
+                        f"User: {ep['input'][:150]} | "
+                        f"Ossa: {ep['response'][:150]}"
+                    )
+                    relevant_facts.append(fact)
+                    if len(relevant_facts) >= 3:
+                        break
+
+        return {
+            "recent": recent,
+            "relevant_facts": relevant_facts
+        }
+
     # ------------------------------------------------------------------
     # Management
     # ------------------------------------------------------------------
 
     def clear_memory(self) -> None:
-        """Delete all stored episodes."""
         self.thalamus.set_memories([])
         logger.info("All memories cleared.")
 
     def memory_size(self) -> int:
-        """Return the current number of episodes in memory."""
         return len(self.thalamus.get_memories())
