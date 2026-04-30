@@ -7,17 +7,17 @@ import re
 from threading import Lock
 
 class Accelerator:
-    """API handler for Groq (Llama 3 8B) – with context trimming and better error logging."""
+    """API handler for Groq (Llama 3.1 8B Instant) – context‑trimmed, rate‑limit safe."""
     def __init__(self):
         self.api_key = os.environ.get("GROQ_API_KEY", "").strip()
         if not self.api_key:
             raise EnvironmentError("GROQ_API_KEY not set")
         self.logger = logging.getLogger("Accelerator")
         self.max_retries = 2
-        self.cooldown = 2            # seconds between calls
+        self.cooldown = 2            # seconds between calls (free tier: 30 req/min)
         self.last_request_time = 0
         self.lock = Lock()
-        self.model = "llama3-8b-8192"
+        self.model = "llama-3.1-8b-instant"   # current Groq free‑tier model
 
     def _wait_for_cooldown(self):
         with self.lock:
