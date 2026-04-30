@@ -34,15 +34,16 @@ class Heartbeat:
             emotion_state["intensity"] = new_intensity
             self.brain_controller.thalamus.set_emotion(emotion_state)
 
-            # Trigger metacognitive reflection (e.g., every 5 minutes)
-            # For simplicity, use a counter; here we do it every 10 intervals
-            if hasattr(self, '_counter'):
-                self._counter += 1
-            else:
+            # Initialize counter if missing
+            if not hasattr(self, '_counter'):
                 self._counter = 0
+            else:
+                self._counter += 1
 
-            if self._counter % 10 == 0:
-                self.logger.info("Triggering metacognitive reflection")
+            # Trigger metacognitive reflection only once every 30 minutes
+            # With interval=10s, 30 * 60 / 10 = 180 loops
+            if self._counter % 180 == 0:
+                self.logger.info("Triggering metacognitive reflection (every 30 min)")
                 try:
                     self.brain_controller.metacognition.reflect()
                 except Exception as e:

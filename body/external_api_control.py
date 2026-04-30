@@ -2,6 +2,8 @@ import os
 import time
 import requests
 import logging
+import json
+import re
 
 class Accelerator:
     """API handler for Google Gemini 2.0 Flash with rate‑limit handling."""
@@ -21,7 +23,7 @@ class Accelerator:
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": 0.7,
-                "maxOutputTokens": 200,   # keep responses short
+                "maxOutputTokens": 200,
             }
         }
         try:
@@ -33,7 +35,7 @@ class Accelerator:
                 timeout=30
             )
             if resp.status_code == 429 and retries < self.max_retries:
-                wait = (2 ** retries) * 2   # 2, 4, 8 seconds
+                wait = (2 ** retries) * 2
                 self.logger.warning(f"Rate limited, retrying in {wait}s")
                 time.sleep(wait)
                 return self.generate_text(prompt, retries + 1)
@@ -48,10 +50,10 @@ class Accelerator:
             self.logger.error(f"Gemini API error: {e}")
             return "I'm having trouble thinking right now."
 
-    def generate_response_and_simulate(self, user_input: str, context: dict, identity: dict) -> str:
+    def generate_response_and_simulate(self, user_input: str, context: dict, identity: dict) -> dict:
         """
-        Single API call that picks the best response and imagines its outcome,
-        to avoid multiple calls and rate limits.
+        Single API call that picks the best response and imagines its outcome.
+        Returns a dict with 'response' and 'simulation'.
         """
         prompt = f"""
 You are {identity.get('name', 'Ossa')}, an AI with the mission: {identity.get('mission')}.
@@ -72,16 +74,16 @@ Output your answer exactly in this JSON format:
 Return only the JSON, no other text.
 """
         raw = self.generate_text(prompt)
-        # Attempt to parse JSON
-        import json, re
         try:
+            # Extract JSON from the response
             json_match = re.search(r'\{.*\}', raw, re.DOTALL)
             if json_match:
                 data = json.loads(json_match.group())
-                return data.get("response", raw)
+                return data
         except Exception:
             pass
-        return raw   # fallback
+        # Fallback: treat the whole text as the response
+        return {"response": raw, "simulation": ""}
 
     def _format_context(self, memories):
         if not memories:

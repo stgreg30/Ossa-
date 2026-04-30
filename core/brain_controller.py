@@ -22,8 +22,8 @@ class ExecutiveFunction:
         self.amygdala = Amygdala(self.thalamus)
         self.hippocampus = Hippocampus(self.thalamus)
         self.accelerator = Accelerator()
-        self.imagination = Imagination(self.accelerator)
-        self.decision_engine = DecisionEngine(self.thalamus)
+        self.imagination = Imagination(self.accelerator)          # kept for possible future use
+        self.decision_engine = DecisionEngine(self.thalamus)      # kept for possible future use
         self.metacognition = Metacognition(self.thalamus, self.accelerator)
         self.motor_cortex = MotorCortex()
 
@@ -42,7 +42,7 @@ class ExecutiveFunction:
         self.logger.info("Ossa brain initialized with heartbeat.")
 
     def pulse(self, raw_input: str) -> str:
-        """The full cognitive cycle: Perceive -> Feel -> Context -> Simulate -> Decide -> Act -> Record -> Reflect (async)."""
+        """The full cognitive cycle: Perceive -> Feel -> Context -> (Simulate+Decide) -> Act -> Record -> Reflect."""
         # 1. Perceive
         self.cns.broadcast(Signal("input_received", {"text": raw_input}, 0.8))
         self.logger.info(f"Perceived: {raw_input}")
@@ -59,24 +59,27 @@ class ExecutiveFunction:
         }
         self.logger.debug(f"Context: {context}")
 
-        # 4. Simulate – generate response candidates and imagine outcomes
-        candidates = self.accelerator.generate_candidates(
+        # 4. Generate response + simulate outcome in ONE API call
+        #    This replaces the old multi‑call generate_candidates + simulate + decide.
+        response_data = self.accelerator.generate_response_and_simulate(
             user_input=raw_input,
             context=context,
             identity=self.thalamus.get_identity()
         )
-        simulations = []
-        for cand in candidates:
-            outcome = self.imagination.simulate(cand, raw_input, context)
-            simulations.append({"candidate": cand, "outcome": outcome})
-        self.logger.info(f"Simulated {len(simulations)} actions")
 
-        # 5. Decide – pick the best action
-        best = self.decision_engine.evaluate(simulations)
-        response = best["candidate"]
-        self.logger.info(f"Decision: {response}")
+        # Extract the response text from the returned dict (or fallback)
+        if isinstance(response_data, dict):
+            response = response_data.get("response", "")
+            simulation_outcome = response_data.get("simulation", "")
+        else:
+            response = str(response_data)
+            simulation_outcome = ""
 
-        # 6. Act – if response is a terminal command, use MotorCortex
+        self.logger.info(f"Generated response: {response}")
+        if simulation_outcome:
+            self.logger.info(f"Simulated outcome: {simulation_outcome}")
+
+        # 5. Act – if response is a terminal command, use MotorCortex
         if response.startswith("!"):  # convention for commands
             command = response[1:]  # remove prefix
             action_output = self.motor_cortex.execute(command)
@@ -84,17 +87,17 @@ class ExecutiveFunction:
         else:
             final_response = response
 
-        # 7. Record – store episode
+        # 6. Record – store episode
         episode = {
             "timestamp": datetime.now().isoformat(),
             "input": raw_input,
             "response": final_response,
             "mood": self.thalamus.get_emotion().get("current_mood"),
-            "simulation_count": len(simulations)
+            "simulation": simulation_outcome
         }
         self.hippocampus.add_episode(episode)
 
-        # 8. Reflect – already handled periodically by heartbeat, but you can trigger a quick one
+        # 7. Reflect – periodic (handled by heartbeat), but we still broadcast the signal
         self.cns.broadcast(Signal("response_generated", {"response": final_response}, 0.9))
 
         return final_response
