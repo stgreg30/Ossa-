@@ -1,66 +1,51 @@
+import threading
 import time
-from core.brain_controller import executive_function
-from core.central_nervous_system import ossa_cns, Signal
+import logging
 
-class OperatingLoop:
-    """
-    The Heartbeat of Ossa. 
-    Keeps the cognitive cycle running and manages the 'Tick' of the brain.
-    """
-    def __init__(self):
-        self.executive = executive_function
-        self.cns = ossa_cns
-        self.is_alive = False
-        self.tick_rate = 0.5  # Seconds between cognitive cycles
+class Heartbeat:
+    """Background loop that maintains homeostasis and triggers metacognition."""
+    def __init__(self, cns, brain_controller, interval=30):
+        self.cns = cns
+        self.brain_controller = brain_controller
+        self.interval = interval
+        self._running = False
+        self._thread = None
+        self.logger = logging.getLogger("Heartbeat")
 
     def start(self):
-        """Wake up Ossa and start the life cycle."""
-        self.is_alive = True
-        self.executive.initialize_brain()
-        
-        print("[HEARTBEAT] Ossa is now breathing...")
-        self.run_loop()
-
-    def run_loop(self):
-        """The continuous cycle of perception and self-reflection."""
-        try:
-            while self.is_alive:
-                # 1. Internal Homeostasis Check
-                # Ossa looks at its own state (energy, mood) every tick.
-                self.maintain_internal_state()
-
-                # 2. Process CNS Queue
-                # If there are signals waiting in the nervous system, handle them.
-                if self.cns.signal_log:
-                    latest_signal = self.cns.signal_log[-1]
-                    # Log activity for introspection
-                    # print(f"[TICK] Current Signal: {latest_signal.origin}")
-
-                # 3. Sleep to simulate neural firing interval
-                time.sleep(self.tick_rate)
-        except KeyboardInterrupt:
-            self.stop()
-
-    def maintain_internal_state(self):
-        """
-        Periodically triggers introspection and reflection.
-        Ensures Ossa doesn't 'freeze' without input.
-        """
-        # Broadcast a 'Background Thought' signal
-        heartbeat_signal = Signal(
-            origin="executive.homeostasis",
-            content="Internal state check.",
-            intensity=0.1 # Low priority background noise
-        )
-        self.cns.broadcast(heartbeat_signal)
+        if self._running:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+        self.logger.info("Heartbeat started")
 
     def stop(self):
-        """Graceful shutdown of the organism."""
-        print("\n[HEARTBEAT] Stopping Ossa...")
-        self.is_alive = False
-        self.executive.shutdown()
+        self._running = False
+        if self._thread:
+            self._thread.join(timeout=5)
 
-if __name__ == "__main__":
-    # This allows you to test the loop directly
-    loop = OperatingLoop()
-    loop.start()
+    def _loop(self):
+        while self._running:
+            # Homeostasis: slowly decay emotional intensity toward neutral
+            emotion_state = self.brain_controller.thalamus.get_emotion()
+            current_intensity = emotion_state.get("intensity", 0.5)
+            new_intensity = max(0.1, current_intensity - 0.02)  # decay
+            emotion_state["intensity"] = new_intensity
+            self.brain_controller.thalamus.set_emotion(emotion_state)
+
+            # Trigger metacognitive reflection (e.g., every 5 minutes)
+            # For simplicity, use a counter; here we do it every 10 intervals
+            if hasattr(self, '_counter'):
+                self._counter += 1
+            else:
+                self._counter = 0
+
+            if self._counter % 10 == 0:
+                self.logger.info("Triggering metacognitive reflection")
+                try:
+                    self.brain_controller.metacognition.reflect()
+                except Exception as e:
+                    self.logger.error(f"Metacognition error: {e}")
+
+            time.sleep(self.interval)

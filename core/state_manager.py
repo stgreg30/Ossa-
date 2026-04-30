@@ -1,71 +1,95 @@
 import json
 import os
-from threading import Lock
+import threading
+from typing import Any, Dict
 
-class StateManager:
-    """
-    The Thalamus of Ossa. 
-    Manages the flow of data between persistent storage and active cognition.
-    """
-    def __init__(self, data_dir="data"):
-        self.data_dir = data_dir
-        self.lock = Lock()  # Prevents data corruption during simultaneous read/writes
-        self.active_state = {
-            "identity": {},
-            "emotions": {"mood": "neutral", "energy": 1.0},
-            "goals": [],
-            "short_term_context": []
+class Thalamus:
+    """Thread‑safe state manager using JSON file persistence."""
+    _lock = threading.Lock()
+    DATA_DIR = "data"
+
+    STATE_FILES = {
+        "identity": "identity.json",
+        "emotions": "emotions.json",
+        "memories": "memories.json",
+        "beliefs": "beliefs.json",
+        "goals": "goals.json",
+    }
+
+    DEFAULTS = {
+        "identity": {
+            "name": "Ossa",
+            "mission": "Be a helpful, empathetic, and safe cognitive companion.",
+            "core_values": ["helpfulness", "safety", "curiosity"]
+        },
+        "emotions": {
+            "current_mood": "collaborative",
+            "intensity": 0.5,
+            "mood_history": []
+        },
+        "memories": [],
+        "beliefs": {
+            "world_model": "User is a curious human seeking assistance."
+        },
+        "goals": {
+            "short_term": ["Answer user query", "Maintain positive interaction"],
+            "long_term": ["Learn from conversations", "Improve safety"]
         }
-        self.initialize_storage()
+    }
 
-    def initialize_storage(self):
-        """Ensures the data directory and essential files exist."""
-        if not os.path.exists(self.data_dir):
-            os.makedirs(self.data_dir)
-        
-        # Define required files and their default structures
-        required_files = {
-            "identity.json": {"name": "Ossa", "version": "1.0", "mission": "Self-evolution"},
-            "beliefs.json": [],
-            "emotions.json": {"mood": "stable", "energy": 1.0},
-            "memories.json": [],
-            "goals.json": {"current_priority": None, "objectives": []}
-        }
+    def __init__(self):
+        os.makedirs(self.DATA_DIR, exist_ok=True)
+        self._initialize_files()
 
-        for filename, default_data in required_files.items():
-            path = os.path.join(self.data_dir, filename)
+    def _initialize_files(self):
+        for key, filename in self.STATE_FILES.items():
+            path = os.path.join(self.DATA_DIR, filename)
             if not os.path.exists(path):
-                self.save_to_disk(path, default_data)
-            self.load_into_memory(filename.replace(".json", ""), path)
+                with open(path, 'w') as f:
+                    json.dump(self.DEFAULTS[key], f, indent=2)
 
-    def load_into_memory(self, key, path):
-        """Hydrates Ossa's active memory from the disk."""
-        with open(path, 'r') as f:
-            self.active_state[key] = json.load(f)
+    def _load(self, key: str) -> Dict[str, Any]:
+        path = os.path.join(self.DATA_DIR, self.STATE_FILES[key])
+        with self._lock:
+            with open(path, 'r') as f:
+                return json.load(f)
 
-    def save_to_disk(self, path, data):
-        """Persists a mental state to the physical drive."""
-        with self.lock:
+    def _save(self, key: str, data: Any):
+        path = os.path.join(self.DATA_DIR, self.STATE_FILES[key])
+        with self._lock:
             with open(path, 'w') as f:
-                json.dump(data, f, indent=4)
+                json.dump(data, f, indent=2)
 
-    def update_organ_state(self, organ_key, new_data, persist=True):
-        """
-        Updates Ossa's current state. 
-        If persist=True, it writes immediately to the 'biological' drive.
-        """
-        self.active_state[organ_key] = new_data
-        if persist:
-            path = os.path.join(self.data_dir, f"{organ_key}.json")
-            self.save_to_disk(path, new_data)
+    def get_state(self, key: str) -> Any:
+        return self._load(key)
 
-    def get_context_snapshot(self):
-        """Returns a unified view of Ossa's current internal world."""
-        return {
-            "who_i_am": self.active_state.get("identity"),
-            "how_i_feel": self.active_state.get("emotions"),
-            "what_i_want": self.active_state.get("goals")
-        }
+    def update_state(self, key: str, new_data: Any):
+        self._save(key, new_data)
 
-# Global instance
-thalamus = StateManager()
+    # Convenience methods
+    def get_emotion(self):
+        return self.get_state("emotions")
+
+    def set_emotion(self, emotion_state):
+        self.update_state("emotions", emotion_state)
+
+    def get_memories(self):
+        return self.get_state("memories")
+
+    def set_memories(self, memories):
+        self.update_state("memories", memories)
+
+    def get_identity(self):
+        return self.get_state("identity")
+
+    def get_beliefs(self):
+        return self.get_state("beliefs")
+
+    def set_beliefs(self, beliefs):
+        self.update_state("beliefs", beliefs)
+
+    def get_goals(self):
+        return self.get_state("goals")
+
+    def set_goals(self, goals):
+        self.update_state("goals", goals)
