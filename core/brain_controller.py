@@ -43,6 +43,21 @@ class ExecutiveFunction:
 
     def pulse(self, raw_input: str) -> str:
         """The full cognitive cycle: Perceive -> Feel -> Context -> (Simulate+Decide) -> Act -> Record -> Reflect."""
+
+        # 0. Direct terminal command bypass – no AI processing
+        if raw_input.startswith("!"):
+            command = raw_input[1:]
+            result = self.motor_cortex.execute(command)
+            final_response = f"Command executed:\n{result}"
+            self.hippocampus.add_episode({
+                "timestamp": datetime.now().isoformat(),
+                "input": raw_input,
+                "response": final_response,
+                "mood": self.thalamus.get_emotion().get("current_mood"),
+                "simulation": "terminal command"
+            })
+            return final_response
+
         # 1. Perceive
         self.cns.broadcast(Signal("input_received", {"text": raw_input}, 0.8))
         self.logger.info(f"Perceived: {raw_input}")
@@ -60,7 +75,6 @@ class ExecutiveFunction:
         self.logger.debug(f"Context: {context}")
 
         # 4. Generate response + simulate outcome in ONE API call
-        #    This replaces the old multi‑call generate_candidates + simulate + decide.
         response_data = self.accelerator.generate_response_and_simulate(
             user_input=raw_input,
             context=context,
@@ -79,9 +93,9 @@ class ExecutiveFunction:
         if simulation_outcome:
             self.logger.info(f"Simulated outcome: {simulation_outcome}")
 
-        # 5. Act – if response is a terminal command, use MotorCortex
-        if response.startswith("!"):  # convention for commands
-            command = response[1:]  # remove prefix
+        # 5. Act – (legacy inline command handling, rarely used now)
+        if response.startswith("!"):
+            command = response[1:]
             action_output = self.motor_cortex.execute(command)
             final_response = f"Command executed:\n{action_output}"
         else:
@@ -97,7 +111,7 @@ class ExecutiveFunction:
         }
         self.hippocampus.add_episode(episode)
 
-        # 7. Reflect – periodic (handled by heartbeat), but we still broadcast the signal
+        # 7. Reflect – already handled periodically by heartbeat, broadcast for listeners
         self.cns.broadcast(Signal("response_generated", {"response": final_response}, 0.9))
 
         return final_response
