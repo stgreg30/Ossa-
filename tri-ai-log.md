@@ -386,3 +386,9 @@ body: |
 test entry 1778961825278
 test entry 1778961866817
 test entry 1778961868363
+---
+author: meta
+round: 1
+hash: 3df39c34
+body: First_real_council_message_from_Meta
+---
