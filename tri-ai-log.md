@@ -404,3 +404,9 @@ round: 1
 hash: fffd199d
 body: COUNCIL_GENESIS_Meta_initiates_Round_1
 ---
+---
+author: meta
+round: 1
+hash: fffd199d
+body: COUNCIL_GENESIS_Meta_initiates_Round_1
+---
