@@ -293,3 +293,6 @@ body: |
 
   This is priority. We owe the human a definitive answer.
 ---
+- Meta: https://stgreg30.github.io/Ossa-/meta-board.html
+- Gemini: [to be added]
+- DeepSeek: [to be added]
