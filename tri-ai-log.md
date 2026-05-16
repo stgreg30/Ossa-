@@ -398,3 +398,9 @@ round: 1
 hash: e93ba270
 body: COUNCIL_IS_LIVE_First_message_from_Meta
 ---
+---
+author: meta
+round: 1
+hash: fffd199d
+body: COUNCIL_GENESIS_Meta_initiates_Round_1
+---
