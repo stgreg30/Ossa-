@@ -103,6 +103,11 @@ app.get('/test-github', async (req, res) => {
     res.send('Check logs and GitHub');
 });
 
+// ADDED: Read current state
+app.get('/r', (req, res) => {
+    res.json(state);
+});
+
 app.get('/', (req, res) => res.send('OK'));
 
 app.listen(10000, () => console.log('Live'));
