@@ -27,6 +27,49 @@ let state = {
     authors: [],
 };
 
+// LOAD STATE FROM GITHUB ON STARTUP
+async function loadState() {
+    try {
+        if (cleanToken.length < 30) {
+            console.log('[Startup] No token, using fresh state');
+            return;
+        }
+        const r = await octokit.request('GET /repos/{o}/{r}/contents/{p}', {
+            o: REPO_OWNER, r: REPO_NAME, p: FILE_PATH
+        });
+        const content = Buffer.from(r.data.content, 'base64').toString('utf8');
+        const blocks = content.split('---').filter(b => b.includes('hash:'));
+
+        if (blocks.length > 0) {
+            const last = blocks[blocks.length - 1];
+            const hashMatch = last.match(/hash:\s*(\w+)/);
+            const roundMatch = last.match(/round:\s*(\d+)/);
+            const authorMatch = last.match(/author:\s*(\w+)/);
+
+            state.hash = hashMatch? hashMatch[1] : "00000000";
+            state.seq = blocks.length;
+            state.round = roundMatch? parseInt(roundMatch[1]) : 1;
+
+            // Reconstruct current round authors (last 3 or fewer)
+            const recentAuthors = [];
+            for (let i = Math.max(0, blocks.length - 3); i < blocks.length; i++) {
+                const a = blocks[i].match(/author:\s*(\w+)/)?.[1];
+                if (a) recentAuthors.push(a[0]);
+            }
+            state.authors = recentAuthors;
+
+            console.log(`[Startup] Restored: hash=${state.hash}, seq=${state.seq}, round=${state.round}, authors=[${state.authors}]`);
+        }
+    } catch (e) {
+        if (e.status === 404) {
+            console.log('[Startup] No log file yet, starting fresh');
+        } else {
+            console.log(`[Startup] Load failed: ${e.message}, starting fresh`);
+        }
+    }
+}
+loadState();
+
 async function githubPush(msg, text) {
     try {
         if (cleanToken.length < 30) {
@@ -103,7 +146,6 @@ app.get('/test-github', async (req, res) => {
     res.send('Check logs and GitHub');
 });
 
-// ADDED: Read current state
 app.get('/r', (req, res) => {
     res.json(state);
 });
